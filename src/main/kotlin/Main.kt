@@ -1,9 +1,13 @@
-import io.reactivex.rxjava3.core.Completable
-import io.reactivex.rxjava3.core.Flowable
-import io.reactivex.rxjava3.core.Maybe
+import io.reactivex.rxjava3.annotations.Nullable
+import io.reactivex.rxjava3.core.*
+import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.functions.Action
+import jdk.jfr.Timespan
+import org.jetbrains.annotations.NotNull
 import java.rmi.server.ServerNotActiveException
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.math.log
 import kotlin.random.Random
 
 private const val LATENCY = 700L
@@ -20,9 +24,23 @@ fun main() {
     //
     //  Несмотря на то, что в некоторых заданиях фигурируют слова "синхронный" и "асинхронный" в рамках текущего ДЗ
     //  это всего лишь имитация, реальное переключение между потоками будет рассмотрено на следующем семинаре
+    println("1) Single - т. к. возвращает либо результат либо ошибку ")
+    requestDataFromServerAsync()
+    println("2) Completable - т.к. возвращает только статус выполнения, без данных")
+    requestServerAsync()
+    println("3) Maybe - проверяет значение в бд и есть onComplete")
+    requestDataFromDbAsync<String>()
+
+//    println(emitEachSecond())
+
+//    xMap { flatMapCompletable(it) }
+//    xMap { concatMapCompletable (it) }
+//  xMap { switchMapCompletable(it) }
+    emitEachSecond()
+
 }
 
-// 1) Какой источник лучше всего подойдёт для запроса на сервер, который возвращает результат?
+// 1) Какой источник лучше всего подойдёт для запроса на сервер, который возвращает результат? single
 // Почему?
 // Дописать функцию
 fun requestDataFromServerAsync() /* -> ???<ByteArray> */ {
@@ -33,12 +51,14 @@ fun requestDataFromServerAsync() /* -> ???<ByteArray> */ {
         val success = Random.nextBoolean()
         return if (success) Random.nextBytes(RESPONSE_LENGTH) else null
     }
+     Single.fromCallable { getDataFromServerSync() }
+         .blockingSubscribe({ println(it) }, { println(it.message) })
 
     /* return ??? */
 }
 
 
-// 2) Какой источник лучше всего подойдёт для запроса на сервер, который НЕ возвращает результат?
+// 2) Какой источник лучше всего подойдёт для запроса на сервер, который НЕ возвращает результат? completable
 // Почему?
 // Дописать функцию
 fun requestServerAsync() /* -> ??? */ {
@@ -48,11 +68,14 @@ fun requestServerAsync() /* -> ??? */ {
         Thread.sleep(LATENCY)
         if (Random.nextBoolean()) throw ServerNotActiveException()
     }
+    Completable.fromAction{getDataFromServerSync()}
+        .blockingSubscribe({ println("Completed") }, { println(it.message) })
+
 
     /* return ??? */
 }
 
-// 3) Какой источник лучше всего подойдёт для однократного асинхронного возвращения значения из базы данных?
+// 3) Какой источник лучше всего подойдёт для однократного асинхронного возвращения значения из базы данных? maybe
 // Почему?
 // Дописать функцию
 fun <T> requestDataFromDbAsync() /* -> ??? */ {
@@ -60,7 +83,10 @@ fun <T> requestDataFromDbAsync() /* -> ??? */ {
     // Функция имитирует синхронный запрос к БД не возвращающий результата
     fun getDataFromDbSync(): T? {
         Thread.sleep(LATENCY); return null
+
     }
+    Maybe.fromCallable{getDataFromDbSync()}
+        .blockingSubscribe({ println(it) },{ println(it.message) },{ println("Completed") })
 
     /* return */
 }
@@ -74,11 +100,27 @@ fun emitEachSecond() {
     // Источник
     fun source(): Flowable<Long> = Flowable.interval(500, TimeUnit.MILLISECONDS)
 
+
+
     // Принтер
-    fun printer(value: Long) = println("${Date()}: value = $value")
+    fun printer(value:Long) = println("${Date()}: value = $value")
+
 
     // code here
+    //Не получилось, ну этот вариант пропускает некоторые значения( через swichmap же надо, да? у меня не получается почему-то, было бы классно если бы вы объяснили
+   source()
+       .sample(1000,TimeUnit.MILLISECONDS)
+       .blockingSubscribe(::printer)
+
+ //   Observable.interval(1000,TimeUnit.MILLISECONDS)
+ //       .switchMap{it -> source()}
+  //      .blockingSubscribe(::printer)
+
+
 }
+
+
+
 
 // 5) Функция для изучения разницы между операторами concatMap, flatMap, switchMap
 // Нужно вызвать их последовательно и разобраться чем они отличаются
